@@ -1,0 +1,12 @@
+{
+  "jira": {
+    "baseUrl": "https://jira.onlinepatent.ru",
+    "auth": {
+      "type": "basic",
+      "username": "your-jira-login",
+      "password": "your-jira-password"
+    },
+    "timeoutMs": 15000,
+    "previewTtlMs": 300000
+  }
+}
