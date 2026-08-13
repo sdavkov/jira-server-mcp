@@ -7,6 +7,7 @@ export type JiraErrorCode =
   | "jira_unavailable"
   | "network_error"
   | "request_timeout"
+  | "attachment_too_large"
   | "unexpected_response";
 
 type JiraErrorOptions = ErrorOptions & {

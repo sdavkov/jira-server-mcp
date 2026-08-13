@@ -4,6 +4,7 @@ import { z } from "zod";
 import { JiraError } from "../jira/jira-errors.js";
 import { JiraOperationError } from "../jira/jira-service.js";
 import type { JiraService } from "../jira/jira-service.js";
+import type { JiraAttachmentDownload } from "../jira/jira-types.js";
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -20,15 +21,16 @@ const mutationAnnotations = {
 } as const;
 
 const IssueKeySchema = z.string().trim().min(1).max(255);
+const JiraNumericIdSchema = z.string().trim().regex(/^\d+$/u).max(32);
 const PreviewTokenSchema = z.string().uuid();
 const FieldsSchema = z.record(z.string(), z.unknown());
 
 export function createMcpServer(service: JiraService): McpServer {
   const server = new McpServer(
-    { name: "jira-server-mcp", version: "0.1.0" },
+    { name: "jira-server-mcp", version: "0.2.0" },
     {
       instructions:
-        "Read tools need no confirmation. jira_transition_issue and jira_add_comment MUST first be called with confirm=false to obtain a previewToken. Execute only after showing the preview to the user and receiving explicit approval, then call the same tool with confirm=true and that token. Never invent or reuse tokens.",
+        "Read tools need no confirmation. Use jira_get_attachments and jira_get_attachment to inspect files without a browser, and jira_get_linked_issues to discover related Jira issue keys. jira_transition_issue and jira_add_comment MUST first be called with confirm=false to obtain a previewToken. Execute only after showing the preview to the user and receiving explicit approval, then call the same tool with confirm=true and that token. Never invent or reuse tokens.",
     },
   );
 
@@ -98,6 +100,43 @@ function registerReadTools(server: McpServer, service: JiraService): void {
       annotations: readOnlyAnnotations,
     },
     ({ issueKey }) => execute(() => service.getTransitions(issueKey)),
+  );
+
+  server.registerTool(
+    "jira_get_attachments",
+    {
+      title: "List Jira issue attachments",
+      description:
+        "Return attachment IDs and metadata for an issue. Use jira_get_attachment with an attachment ID to retrieve its content without a browser session.",
+      inputSchema: z.object({ issueKey: IssueKeySchema }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({ issueKey }) => execute(() => service.getAttachments(issueKey)),
+  );
+
+  server.registerTool(
+    "jira_get_attachment",
+    {
+      title: "Get Jira attachment content",
+      description:
+        "Download one Jira attachment by numeric ID with the configured Jira account. Images are returned as MCP image content; other files are returned as embedded binary resources.",
+      inputSchema: z.object({ attachmentId: JiraNumericIdSchema }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({ attachmentId }) =>
+      executeAttachment(() => service.downloadAttachment(attachmentId)),
+  );
+
+  server.registerTool(
+    "jira_get_linked_issues",
+    {
+      title: "Get linked Jira issues",
+      description:
+        "Return inward and outward Jira issue links, their relationship labels, and linked issue keys. The linked keys can be used with all existing Jira issue tools.",
+      inputSchema: z.object({ issueKey: IssueKeySchema }).strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({ issueKey }) => execute(() => service.getLinkedIssues(issueKey)),
   );
 }
 
@@ -175,13 +214,55 @@ async function execute(
       structuredContent: result,
     };
   } catch (error) {
-    const safe = safeToolError(error);
-    return {
-      isError: true,
-      content: [{ type: "text", text: safe.message }],
-      structuredContent: { error: safe },
-    };
+    return toolErrorResult(error);
   }
+}
+
+async function executeAttachment(
+  operation: () => Promise<JiraAttachmentDownload>,
+): Promise<CallToolResult> {
+  try {
+    const download = await operation();
+    const metadata = toJsonValue({
+      attachment: download.attachment,
+      bytes: download.content.byteLength,
+    });
+    return {
+      content: [
+        { type: "text", text: JSON.stringify(metadata, null, 2) },
+        attachmentContent(download),
+      ],
+      structuredContent: metadata,
+    };
+  } catch (error) {
+    return toolErrorResult(error);
+  }
+}
+
+function attachmentContent(
+  download: JiraAttachmentDownload,
+): CallToolResult["content"][number] {
+  const data = Buffer.from(download.content).toString("base64");
+  if (download.attachment.mimeType.startsWith("image/")) {
+    return { type: "image", data, mimeType: download.attachment.mimeType };
+  }
+  return {
+    type: "resource",
+    resource: {
+      uri: `jira-attachment:///${download.attachment.id}/${encodeURIComponent(download.attachment.filename)}`,
+      blob: data,
+      mimeType: download.attachment.mimeType,
+    },
+  };
+}
+
+function toolErrorResult(error: unknown): CallToolResult {
+  const safe = safeToolError(error);
+  return {
+    isError: true,
+    content: [{ type: "text", text: safe.message }],
+    structuredContent: { error: safe },
+  };
 }
 
 function requirePreviewToken(value: string | undefined): string {

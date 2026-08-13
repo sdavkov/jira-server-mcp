@@ -18,6 +18,11 @@ type RequestOptions = {
   >;
 };
 
+type AttachmentContentOptions = {
+  readonly expectedMimeType: string;
+  readonly maxBytes: number;
+};
+
 export class JiraHttpClient {
   private readonly options: Required<JiraHttpClientOptions>;
 
@@ -37,6 +42,24 @@ export class JiraHttpClient {
     options: RequestOptions = {},
   ): Promise<T> {
     return this.request<T>("POST", path, options);
+  }
+
+  public async getAttachmentContent(
+    contentUrl: string,
+    options: AttachmentContentOptions,
+  ): Promise<Uint8Array> {
+    const url = this.buildAttachmentUrl(contentUrl);
+    const headers = new Headers({ accept: options.expectedMimeType });
+    this.options.auth.apply(headers);
+    const response = await this.fetch(url, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(this.options.timeoutMs),
+    });
+    if (response.status !== 200) await throwJiraResponseError(response);
+    assertAttachmentMimeType(response, options.expectedMimeType);
+    return readBodyWithinLimit(response, options.maxBytes);
   }
 
   private async request<T>(
@@ -87,6 +110,30 @@ export class JiraHttpClient {
     return url.toString();
   }
 
+  private buildAttachmentUrl(contentUrl: string): string {
+    const jiraUrl = new URL(this.options.baseUrl);
+    const attachmentUrl = new URL(contentUrl);
+    const basePath = jiraUrl.pathname === "/" ? "" : jiraUrl.pathname;
+    const attachmentPath = attachmentUrl.pathname.slice(basePath.length);
+    const trustedPath = /^\/(?:secure\/attachment|attachments)\//u.test(
+      attachmentPath,
+    );
+    if (
+      attachmentUrl.origin !== jiraUrl.origin ||
+      !attachmentUrl.pathname.startsWith(`${basePath}/`) ||
+      !trustedPath ||
+      attachmentUrl.username ||
+      attachmentUrl.password ||
+      attachmentUrl.hash
+    ) {
+      throw new JiraError(
+        "invalid_request",
+        "Jira returned an untrusted attachment content URL",
+      );
+    }
+    return attachmentUrl.toString();
+  }
+
   private async fetch(url: string, init: RequestInit): Promise<Response> {
     try {
       return await this.options.fetcher(url, init);
@@ -101,6 +148,61 @@ export class JiraHttpClient {
       });
     }
   }
+}
+
+function assertAttachmentMimeType(
+  response: Response,
+  expectedMimeType: string,
+): void {
+  const actual = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
+  if (!actual || actual === expectedMimeType) return;
+  if (actual === "application/octet-stream") return;
+  throw new JiraError(
+    "unexpected_response",
+    "Jira attachment content type does not match its metadata",
+    { status: response.status },
+  );
+}
+
+async function readBodyWithinLimit(
+  response: Response,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw attachmentTooLarge();
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) return concatenate(chunks, receivedBytes);
+    receivedBytes += chunk.value.byteLength;
+    if (receivedBytes > maxBytes) {
+      await reader.cancel();
+      throw attachmentTooLarge();
+    }
+    chunks.push(chunk.value);
+  }
+}
+
+function concatenate(chunks: readonly Uint8Array[], size: number): Uint8Array {
+  const content = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    content.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return content;
+}
+
+function attachmentTooLarge(): JiraError {
+  return new JiraError(
+    "attachment_too_large",
+    "Jira attachment exceeds the configured download limit",
+  );
 }
 
 async function throwJiraResponseError(response: Response): Promise<never> {

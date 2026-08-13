@@ -38,6 +38,7 @@ describe("loadConfig", () => {
 
     expect(config.jira.baseUrl).toBe("https://jira.onlinepatent.ru");
     expect(config.jira.timeoutMs).toBe(15_000);
+    expect(config.jira.maxAttachmentBytes).toBe(10_485_760);
     expect(config.jira.auth.username).toBe("user");
   });
 

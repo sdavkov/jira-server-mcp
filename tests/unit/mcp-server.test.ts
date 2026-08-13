@@ -24,6 +24,9 @@ function serviceStub(): JiraService {
     confirmTransition: vi.fn(),
     previewComment: vi.fn(),
     confirmComment: vi.fn(),
+    getAttachments: vi.fn(),
+    downloadAttachment: vi.fn(),
+    getLinkedIssues: vi.fn(),
   } as unknown as JiraService;
 }
 
@@ -41,7 +44,7 @@ async function connect(service: JiraService): Promise<Client> {
 }
 
 describe("createMcpServer", () => {
-  it("exposes exactly the six Jira tools with safe mutation annotations", async () => {
+  it("exposes attachment and linked-issue tools as read-only operations", async () => {
     const client = await connect(serviceStub());
 
     const { tools } = await client.listTools();
@@ -51,17 +54,81 @@ describe("createMcpServer", () => {
       "jira_search_issues",
       "jira_get_issue",
       "jira_get_transitions",
+      "jira_get_attachments",
+      "jira_get_attachment",
+      "jira_get_linked_issues",
       "jira_transition_issue",
       "jira_add_comment",
     ]);
     expect(
-      tools.slice(0, 4).every((tool) => tool.annotations?.readOnlyHint),
+      tools.slice(0, 7).every((tool) => tool.annotations?.readOnlyHint),
     ).toBe(true);
-    expect(tools[4]?.annotations).toMatchObject({
+    expect(tools[7]?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
       openWorldHint: true,
+    });
+  });
+
+  it("returns downloaded PNG bytes as MCP image content", async () => {
+    const service = serviceStub();
+    vi.mocked(service.downloadAttachment).mockResolvedValue({
+      attachment: {
+        id: "10001",
+        filename: "screen.png",
+        size: 4,
+        mimeType: "image/png",
+        contentUrl:
+          "https://jira.onlinepatent.ru/secure/attachment/10001/screen.png",
+      },
+      content: new Uint8Array([137, 80, 78, 71]),
+    });
+    const client = await connect(service);
+
+    const result = await client.callTool({
+      name: "jira_get_attachment",
+      arguments: { attachmentId: "10001" },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content).toContainEqual({
+      type: "image",
+      data: Buffer.from([137, 80, 78, 71]).toString("base64"),
+      mimeType: "image/png",
+    });
+    expect(result.structuredContent).toMatchObject({
+      attachment: { id: "10001", filename: "screen.png" },
+    });
+  });
+
+  it("returns non-image attachments as embedded MCP resources", async () => {
+    const service = serviceStub();
+    vi.mocked(service.downloadAttachment).mockResolvedValue({
+      attachment: {
+        id: "10002",
+        filename: "report.pdf",
+        size: 3,
+        mimeType: "application/pdf",
+        contentUrl:
+          "https://jira.onlinepatent.ru/secure/attachment/10002/report.pdf",
+      },
+      content: new Uint8Array([1, 2, 3]),
+    });
+    const client = await connect(service);
+
+    const result = await client.callTool({
+      name: "jira_get_attachment",
+      arguments: { attachmentId: "10002" },
+    });
+
+    expect(result.content).toContainEqual({
+      type: "resource",
+      resource: {
+        uri: "jira-attachment:///10002/report.pdf",
+        blob: Buffer.from([1, 2, 3]).toString("base64"),
+        mimeType: "application/pdf",
+      },
     });
   });
 

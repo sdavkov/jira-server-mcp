@@ -45,7 +45,7 @@ describe("stdio entrypoint", () => {
     await client.connect(transport);
     const { tools } = await client.listTools();
 
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(9);
     expect(tools.map((tool) => tool.name)).toContain("jira_get_current_user");
   });
 });

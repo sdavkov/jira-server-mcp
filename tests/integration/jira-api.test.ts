@@ -12,6 +12,7 @@ function createApi(fetcher: typeof fetch): JiraApi {
       timeoutMs: 1_000,
       fetcher,
     }),
+    1_024,
   );
 }
 
@@ -79,5 +80,137 @@ describe("JiraApi", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://jira.onlinepatent.ru/rest/api/2/issue/TEST-1/comment/9001",
     );
+  });
+
+  it("lists attachments with stable IDs derived from Jira metadata", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        fields: {
+          attachment: [
+            {
+              self: "https://jira.onlinepatent.ru/rest/api/2/attachment/10001",
+              filename: "screen.png",
+              size: 4,
+              mimeType: "image/png",
+              content:
+                "https://jira.onlinepatent.ru/secure/attachment/10001/screen.png",
+            },
+          ],
+        },
+      }),
+    );
+    const api = createApi(fetcher);
+
+    const attachments = await api.getAttachments("TEST-1");
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://jira.onlinepatent.ru/rest/api/2/issue/TEST-1?fields=attachment",
+    );
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        id: "10001",
+        filename: "screen.png",
+        mimeType: "image/png",
+      }),
+    ]);
+  });
+
+  it("downloads the exact attachment URI returned by Jira metadata", async () => {
+    const contentUrl =
+      "https://jira.onlinepatent.ru/secure/attachment/10001/screen.png";
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          self: "https://jira.onlinepatent.ru/rest/api/2/attachment/10001",
+          filename: "screen.png",
+          size: 4,
+          mimeType: "image/png",
+          content: contentUrl,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([137, 80, 78, 71]), {
+          headers: { "content-type": "image/png" },
+        }),
+      );
+    const api = createApi(fetcher);
+
+    const download = await api.downloadAttachment("10001");
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://jira.onlinepatent.ru/rest/api/2/attachment/10001",
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(contentUrl);
+    expect(download.attachment).toMatchObject({
+      id: "10001",
+      filename: "screen.png",
+    });
+    expect(download.content).toEqual(new Uint8Array([137, 80, 78, 71]));
+  });
+
+  it("normalizes inward and outward linked Jira issues", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        fields: {
+          issuelinks: [
+            {
+              id: "20001",
+              type: {
+                id: "10000",
+                name: "Blocks",
+                inward: "is blocked by",
+                outward: "blocks",
+              },
+              outwardIssue: {
+                id: "101",
+                key: "TEST-2",
+                fields: {
+                  summary: "Dependency",
+                  status: { id: "1", name: "Open" },
+                },
+              },
+            },
+            {
+              id: "20002",
+              type: {
+                id: "10000",
+                name: "Blocks",
+                inward: "is blocked by",
+                outward: "blocks",
+              },
+              inwardIssue: {
+                id: "102",
+                key: "TEST-3",
+                fields: {
+                  summary: "Blocker",
+                  status: { id: "3", name: "In Progress" },
+                },
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const api = createApi(fetcher);
+
+    const links = await api.getLinkedIssues("TEST-1");
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://jira.onlinepatent.ru/rest/api/2/issue/TEST-1?fields=issuelinks",
+    );
+    expect(links).toHaveLength(2);
+    expect(links[0]).toMatchObject({
+      id: "20001",
+      direction: "outward",
+      relationship: "blocks",
+      issue: { key: "TEST-2" },
+    });
+    expect(links[1]).toMatchObject({
+      id: "20002",
+      direction: "inward",
+      relationship: "is blocked by",
+      issue: { key: "TEST-3" },
+    });
   });
 });

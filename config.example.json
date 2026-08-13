@@ -7,6 +7,7 @@
       "password": "your-jira-password"
     },
     "timeoutMs": 15000,
-    "previewTtlMs": 300000
+    "previewTtlMs": 300000,
+    "maxAttachmentBytes": 10485760
   }
 }

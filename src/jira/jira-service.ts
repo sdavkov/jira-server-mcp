@@ -6,9 +6,12 @@ import {
   type PreviewStore,
 } from "../confirmation/preview-store.js";
 import type {
+  JiraAttachment,
+  JiraAttachmentDownload,
   JiraComment,
   JiraGateway,
   JiraIssue,
+  JiraIssueLink,
   JiraSearchRequest,
   JiraSearchResult,
   JiraTransition,
@@ -99,6 +102,20 @@ export class JiraService {
 
   public getTransitions(issueKey: string): Promise<readonly JiraTransition[]> {
     return this.gateway.getTransitions(issueKey);
+  }
+
+  public getAttachments(issueKey: string): Promise<readonly JiraAttachment[]> {
+    return this.gateway.getAttachments(issueKey);
+  }
+
+  public downloadAttachment(
+    attachmentId: string,
+  ): Promise<JiraAttachmentDownload> {
+    return this.gateway.downloadAttachment(attachmentId);
+  }
+
+  public getLinkedIssues(issueKey: string): Promise<readonly JiraIssueLink[]> {
+    return this.gateway.getLinkedIssues(issueKey);
   }
 
   public async previewTransition(

@@ -43,6 +43,12 @@ export const AppConfigSchema = z
           .min(10_000)
           .max(900_000)
           .default(300_000),
+        maxAttachmentBytes: z
+          .number()
+          .int()
+          .min(1_024)
+          .max(52_428_800)
+          .default(10_485_760),
       })
       .strict(),
   })

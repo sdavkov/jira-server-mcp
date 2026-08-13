@@ -23,6 +23,7 @@ async function main(): Promise<void> {
       auth,
       timeoutMs: config.jira.timeoutMs,
     }),
+    config.jira.maxAttachmentBytes,
   );
   const previews = new PreviewStore({ ttlMs: config.jira.previewTtlMs });
   const service = new JiraService(api, previews);

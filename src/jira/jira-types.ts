@@ -65,6 +65,44 @@ export type JiraComment = {
   readonly updated?: string;
 };
 
+export type JiraAttachment = {
+  readonly id: string;
+  readonly filename: string;
+  readonly size: number;
+  readonly mimeType: string;
+  readonly author?: Pick<JiraUser, "name" | "displayName">;
+  readonly created?: string;
+  readonly contentUrl: string;
+  readonly thumbnailUrl?: string;
+};
+
+export type JiraAttachmentDownload = {
+  readonly attachment: JiraAttachment;
+  readonly content: Uint8Array;
+};
+
+export type JiraLinkedIssue = {
+  readonly id: string;
+  readonly key: string;
+  readonly fields: {
+    readonly summary?: string;
+    readonly status?: JiraStatus;
+    readonly priority?: { readonly id: string; readonly name: string } | null;
+    readonly issuetype?: { readonly id: string; readonly name: string };
+  };
+};
+
+export type JiraIssueLink = {
+  readonly id: string;
+  readonly type: {
+    readonly id: string;
+    readonly name: string;
+  };
+  readonly direction: "inward" | "outward";
+  readonly relationship: string;
+  readonly issue: JiraLinkedIssue;
+};
+
 export type JiraSearchRequest = {
   readonly jql: string;
   readonly startAt: number;
@@ -92,4 +130,7 @@ export interface JiraGateway {
   ): Promise<void>;
   addComment(issueKey: string, body: string): Promise<JiraComment>;
   getComment(issueKey: string, commentId: string): Promise<JiraComment>;
+  getAttachments(issueKey: string): Promise<readonly JiraAttachment[]>;
+  downloadAttachment(attachmentId: string): Promise<JiraAttachmentDownload>;
+  getLinkedIssues(issueKey: string): Promise<readonly JiraIssueLink[]>;
 }
