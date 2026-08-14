@@ -19,6 +19,8 @@ function serviceStub(): JiraService {
     }),
     searchIssues: vi.fn(),
     getIssue: vi.fn(),
+    getComments: vi.fn(),
+    getComment: vi.fn(),
     getTransitions: vi.fn(),
     previewTransition: vi.fn(),
     confirmTransition: vi.fn(),
@@ -53,6 +55,8 @@ describe("createMcpServer", () => {
       "jira_get_current_user",
       "jira_search_issues",
       "jira_get_issue",
+      "jira_get_comments",
+      "jira_get_comment",
       "jira_get_transitions",
       "jira_get_attachments",
       "jira_get_attachment",
@@ -61,13 +65,68 @@ describe("createMcpServer", () => {
       "jira_add_comment",
     ]);
     expect(
-      tools.slice(0, 7).every((tool) => tool.annotations?.readOnlyHint),
+      tools.slice(0, 9).every((tool) => tool.annotations?.readOnlyHint),
     ).toBe(true);
-    expect(tools[7]?.annotations).toMatchObject({
+    expect(tools[9]?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
       openWorldHint: true,
+    });
+  });
+
+  it("reads paginated comments without requesting confirmation", async () => {
+    const service = serviceStub();
+    vi.mocked(service.getComments).mockResolvedValue({
+      startAt: 0,
+      maxResults: 50,
+      total: 1,
+      comments: [
+        {
+          id: "9001",
+          body: "Existing discussion",
+          author: { name: "user", displayName: "User" },
+        },
+      ],
+    });
+    const client = await connect(service);
+
+    const result = await client.callTool({
+      name: "jira_get_comments",
+      arguments: { issueKey: "TEST-1" },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(service.getComments).toHaveBeenCalledWith("TEST-1", {
+      startAt: 0,
+      maxResults: 50,
+      orderBy: "created",
+    });
+    expect(result.structuredContent).toMatchObject({
+      total: 1,
+      comments: [{ id: "9001", body: "Existing discussion" }],
+    });
+  });
+
+  it("reads one existing comment by issue key and comment ID", async () => {
+    const service = serviceStub();
+    vi.mocked(service.getComment).mockResolvedValue({
+      id: "9001",
+      body: "Existing discussion",
+      author: { name: "user", displayName: "User" },
+    });
+    const client = await connect(service);
+
+    const result = await client.callTool({
+      name: "jira_get_comment",
+      arguments: { issueKey: "TEST-1", commentId: "9001" },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(service.getComment).toHaveBeenCalledWith("TEST-1", "9001");
+    expect(result.structuredContent).toMatchObject({
+      id: "9001",
+      body: "Existing discussion",
     });
   });
 

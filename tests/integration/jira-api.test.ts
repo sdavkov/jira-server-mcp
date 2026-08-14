@@ -82,6 +82,49 @@ describe("JiraApi", () => {
     );
   });
 
+  it("reads a page of comments in the requested order", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        startAt: 10,
+        maxResults: 25,
+        total: 36,
+        comments: [
+          {
+            id: "9001",
+            body: "Latest visible comment",
+            author: { name: "user", displayName: "User", active: true },
+            created: "2026-08-14T09:00:00.000+0300",
+            updated: "2026-08-14T09:00:00.000+0300",
+            visibility: { type: "role", value: "Developers" },
+          },
+        ],
+      }),
+    );
+    const api = createApi(fetcher);
+
+    const page = await api.getComments("TEST-1", {
+      startAt: 10,
+      maxResults: 25,
+      orderBy: "-created",
+    });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://jira.onlinepatent.ru/rest/api/2/issue/TEST-1/comment?startAt=10&maxResults=25&orderBy=-created",
+    );
+    expect(page).toMatchObject({
+      startAt: 10,
+      maxResults: 25,
+      total: 36,
+      comments: [
+        {
+          id: "9001",
+          body: "Latest visible comment",
+          visibility: { type: "role", value: "Developers" },
+        },
+      ],
+    });
+  });
+
   it("lists attachments with stable IDs derived from Jira metadata", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({

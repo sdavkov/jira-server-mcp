@@ -16,6 +16,7 @@ function createGateway(): JiraGateway {
     transitionIssue: vi.fn(),
     addComment: vi.fn(),
     getComment: vi.fn(),
+    getComments: vi.fn(),
     getAttachments: vi.fn(),
     downloadAttachment: vi.fn(),
     getLinkedIssues: vi.fn(),

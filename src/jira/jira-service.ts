@@ -9,6 +9,8 @@ import type {
   JiraAttachment,
   JiraAttachmentDownload,
   JiraComment,
+  JiraCommentsPage,
+  JiraCommentsRequest,
   JiraGateway,
   JiraIssue,
   JiraIssueLink,
@@ -102,6 +104,17 @@ export class JiraService {
 
   public getTransitions(issueKey: string): Promise<readonly JiraTransition[]> {
     return this.gateway.getTransitions(issueKey);
+  }
+
+  public getComments(
+    issueKey: string,
+    request: JiraCommentsRequest,
+  ): Promise<JiraCommentsPage> {
+    return this.gateway.getComments(issueKey, request);
+  }
+
+  public getComment(issueKey: string, commentId: string): Promise<JiraComment> {
+    return this.gateway.getComment(issueKey, commentId);
   }
 
   public getAttachments(issueKey: string): Promise<readonly JiraAttachment[]> {

@@ -27,10 +27,10 @@ const FieldsSchema = z.record(z.string(), z.unknown());
 
 export function createMcpServer(service: JiraService): McpServer {
   const server = new McpServer(
-    { name: "jira-server-mcp", version: "0.2.0" },
+    { name: "jira-server-mcp", version: "0.3.0" },
     {
       instructions:
-        "Read tools need no confirmation. Use jira_get_attachments and jira_get_attachment to inspect files without a browser, and jira_get_linked_issues to discover related Jira issue keys. jira_transition_issue and jira_add_comment MUST first be called with confirm=false to obtain a previewToken. Execute only after showing the preview to the user and receiving explicit approval, then call the same tool with confirm=true and that token. Never invent or reuse tokens.",
+        "Read tools need no confirmation. Use jira_get_comments and jira_get_comment to inspect existing discussion, jira_get_attachments and jira_get_attachment to inspect files without a browser, and jira_get_linked_issues to discover related Jira issue keys. jira_transition_issue and jira_add_comment MUST first be called with confirm=false to obtain a previewToken. Execute only after showing the preview to the user and receiving explicit approval, then call the same tool with confirm=true and that token. Never invent or reuse tokens.",
     },
   );
 
@@ -88,6 +88,44 @@ function registerReadTools(server: McpServer, service: JiraService): void {
       annotations: readOnlyAnnotations,
     },
     ({ issueKey }) => execute(() => service.getIssue(issueKey)),
+  );
+
+  server.registerTool(
+    "jira_get_comments",
+    {
+      title: "Get Jira issue comments",
+      description:
+        "Return a page of existing comments visible to the current Jira user, including body, author, timestamps, and visibility restrictions.",
+      inputSchema: z
+        .object({
+          issueKey: IssueKeySchema,
+          startAt: z.number().int().min(0).default(0),
+          maxResults: z.number().int().min(1).max(100).default(50),
+          orderBy: z.enum(["created", "-created"]).default("created"),
+        })
+        .strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({ issueKey, ...request }) =>
+      execute(() => service.getComments(issueKey, request)),
+  );
+
+  server.registerTool(
+    "jira_get_comment",
+    {
+      title: "Get one Jira comment",
+      description:
+        "Return one existing comment by issue key and numeric comment ID when it is visible to the current Jira user.",
+      inputSchema: z
+        .object({
+          issueKey: IssueKeySchema,
+          commentId: JiraNumericIdSchema,
+        })
+        .strict(),
+      annotations: readOnlyAnnotations,
+    },
+    ({ issueKey, commentId }) =>
+      execute(() => service.getComment(issueKey, commentId)),
   );
 
   server.registerTool(

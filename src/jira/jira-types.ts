@@ -60,9 +60,28 @@ export type JiraTransition = {
 export type JiraComment = {
   readonly id: string;
   readonly body: string;
+  readonly renderedBody?: string;
   readonly author?: Pick<JiraUser, "name" | "displayName">;
+  readonly updateAuthor?: Pick<JiraUser, "name" | "displayName">;
   readonly created?: string;
   readonly updated?: string;
+  readonly visibility?: {
+    readonly type: "group" | "role";
+    readonly value: string;
+  };
+};
+
+export type JiraCommentsRequest = {
+  readonly startAt: number;
+  readonly maxResults: number;
+  readonly orderBy: "created" | "-created";
+};
+
+export type JiraCommentsPage = {
+  readonly startAt: number;
+  readonly maxResults: number;
+  readonly total: number;
+  readonly comments: readonly JiraComment[];
 };
 
 export type JiraAttachment = {
@@ -129,6 +148,10 @@ export interface JiraGateway {
     fields: Readonly<Record<string, unknown>>,
   ): Promise<void>;
   addComment(issueKey: string, body: string): Promise<JiraComment>;
+  getComments(
+    issueKey: string,
+    request: JiraCommentsRequest,
+  ): Promise<JiraCommentsPage>;
   getComment(issueKey: string, commentId: string): Promise<JiraComment>;
   getAttachments(issueKey: string): Promise<readonly JiraAttachment[]>;
   downloadAttachment(attachmentId: string): Promise<JiraAttachmentDownload>;

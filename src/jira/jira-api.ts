@@ -3,6 +3,8 @@ import type {
   JiraAttachment,
   JiraAttachmentDownload,
   JiraComment,
+  JiraCommentsPage,
+  JiraCommentsRequest,
   JiraGateway,
   JiraIssue,
   JiraIssueLink,
@@ -88,6 +90,16 @@ export class JiraApi implements JiraGateway {
   public getComment(issueKey: string, commentId: string): Promise<JiraComment> {
     return this.http.get(
       `/rest/api/2/issue/${encodeSegment(issueKey)}/comment/${encodeSegment(commentId)}`,
+    );
+  }
+
+  public getComments(
+    issueKey: string,
+    request: JiraCommentsRequest,
+  ): Promise<JiraCommentsPage> {
+    return this.http.get(
+      `/rest/api/2/issue/${encodeSegment(issueKey)}/comment`,
+      { query: request },
     );
   }
 
